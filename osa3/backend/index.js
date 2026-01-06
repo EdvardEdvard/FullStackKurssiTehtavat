@@ -1,14 +1,18 @@
+require('dotenv').config()          //Load environment variables first
+
 const cors = require('cors')
-const express = require('express')  // Import Express framework
-const app = express()               // Create Express application
-const morgan = require('morgan')    // logger something something
+const express = require('express')          // Import Express framework
+const app = express()                       // Create Express application
+const morgan = require('morgan')            // HTTP request logger middleware
+const Person = require('./models/person')   // Import the Mongoose Person model - THIS IS KEY FOR DB
 
-app.use(express.static('dist'))
-app.use(express.json())             // Middleware to parse JSON bodies
-app.use(morgan('tiny'))             // logs all requests in tiny mode
+app.use(express.static('dist'))     // Serve frontend build 
+app.use(express.json())             // Middleware to parse JSON bodies from requests
+app.use(cors())                     // Enable CORS so frontend can communicate with backend
+app.use(morgan('tiny'))             // Log all requests in tiny format (basic info)
 
 
-
+// Custom token for logging POST body
 morgan.token('body', (req) => {                                   // Step 1: We tell Morgan "hey, here’s a new thing you can log called 'body'"
   return req.method === 'POST' ? JSON.stringify(req.body) : ''    // Step 2: If someone is doing a POST request, grab the data they sent (req.body)
                                                                   // and turn it into text (JSON.stringify). If not POST, leave it empty.
@@ -31,50 +35,61 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms :b
 
 
 
-let persons = [
-  { id: 1, name: 'Arto Hellas', number: '040-123456' },
-  { id: 2, name: 'Ada Lovelace', number: '39-44-5323523' },
-  { id: 3, name: 'Dan Abramov', number: '12-43-234545' },
-  { id: 4, name: 'Mary Poppendieck', number: '39-23-6423122' },
-  { id: 333, name: 'Oletus Testiolento', number: '+354-444-333-222' },
-  { id: 111, name: 'Haisuli', number: '+354-111-111-222' }
-]
-
-//ALL PERSONS
-// http://localhost:3001/api/persons
-app.get('/api/persons', (request, response) => {response.json(persons)})  // GET endpoint: returns all persons as JSON ()
-
-
-//INFO PAGE
-// http://localhost:3001/info
-app.get('/info', (request, response) => {   // GET endpoint: info about the phonebook
-  const count = persons.length              // Count  persons in the phonebook 
-  const date = new Date()                   // Get the current date and time  
-
-  response.send(`Phonebook has info for ${count} people<br>${date}`)
+// GET all persons – data now comes from MongoDB, returns all persons as JSON ()
+app.get('/api/persons', (request, response) => {
+  console.log('Fetching all persons from database...')  //debug
+  Person.find({}).then(persons => {                     // Searching from database: Person.find({})
+    console.log('Found persons:', persons.length)       //debug
+    response.json(persons)
+  })
 })
 
-//GET ONE PERSON
-// http://localhost:3001/api/persons/4
-app.get('/api/persons/:id', (request, response) => {   //GET endpoint for singular person:  /api/persons/:id 
-  const id = Number(request.params.id)                 // Extract id from route, Convert to number
-  const person = persons.find(p => p.id === id)        // find person with id match
 
-  person //response
-    ? response.json(person)         
-    : response.status(404).end()    
+// INFO PAGE - count from database
+app.get('/info', (request, response) => {
+  Person.countDocuments({}).then(count => {           // Count now from MongoDB
+    const date = new Date()
+    console.log(`Info page requested - current count: ${count}`)  //debug
+    response.send(`Phonebook has info for ${count} people<br>${date}`)
+  })
 })
 
-//DELETE PERSON
-// http://localhost:3001/api/persons/111
-app.delete('/api/persons/:id', (request, response) => {   //in Postman, use delete method
-  const id = Number(request.params.id)           
-  const exists = persons.some(p => p.id === id)      // find if person exists
+// GET ONE PERSON BY ID
+app.get('/api/persons/:id', (request, response) => {
+  Person.findById(request.params.id)
+    .then(person => {
+      if (person) {
+        console.log('Found person:', person.name)   
+        response.json(person)
+      } else {
+        console.log('Person not found with id:', request.params.id)
+        response.status(404).end()
+      }
+    })
+    .catch(error => {
+      console.log('Invalid ID format:', request.params.id)
+      response.status(400).json({ error: 'malformatted id' })
+    })
+})
 
-  exists
-    ? (persons = persons.filter(p => p.id !== id),   // delete it
-       response.status(204).end())                   // success
-    : response.status(404).end()                     // not found
+
+// DELETE PERSON BY ID 
+
+app.delete('/api/persons/:id', (request, response) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(deletedPerson => {
+      if (deletedPerson) {
+        console.log('Deleted person:', deletedPerson.name)  // Debug: inline example
+        response.status(204).end()
+      } else {
+        console.log('Person not found for deletion:', request.params.id)
+        response.status(404).end()
+      }
+    })
+    .catch(error => {
+      console.log('Invalid ID for delete:', request.params.id)
+      response.status(400).json({ error: 'malformatted id' })
+    })
 })
 
 // Generate unique ID without loops
@@ -83,31 +98,51 @@ const generateId = () => {
   return persons.find(p => p.id === id) ? generateId() : id  // return unique id, othewise do recursive                                
 }
 
-// POST: add new person
-app.post('/api/persons', (request, response) => {
-  const body = request.body
+// POST /api/persons - add new person to database 
+app.post('/api/persons', async (request, response) => {
+  const body = request.body                                          // Extract data from request body
+  console.log('POST request received with body:', body)              // Debug: show incoming data
 
-
-  if (!body.name || !body.number)               // Check: name and number given
-    return response.status(400).json({ error: 'name or number missing' })
-
- 
-  if (persons.some(p => p.name === body.name))   //Check is name unique       
-    return response.status(400).json({ error: 'name must be unique' })
-
-  const person = { 
-    name: body.name,
-    number: body.number,
-    id: generateId() // Unique ID
+  // Validate that name and number are provided
+  if (!body.name || !body.number) {
+    console.log('Validation failed: missing name or number')         // Debug: validation error
+    return response.status(400).json({ 
+      error: 'name or number missing' 
+    })
   }
 
-  persons = persons.concat(person) //add person to database yay!
+  try {
+    // Check if a person with the same name already exists
+    const existingPerson = await Person.findOne({ name: body.name })
+    
+    if (existingPerson) {                                            // Duplicate name found
+      console.log('Duplicate name detected:', body.name)             // Debug: duplicate attempt
+      return response.status(400).json({ 
+        error: 'name must be unique' 
+      })
+    }
 
-  response.json(person)// Return added person as JSON
+    // Create new Person document
+    const person = new Person({
+      name: body.name,
+      number: body.number,
+    })
+
+    // Save to MongoDB
+    const savedPerson = await person.save()
+    console.log('New person successfully saved:', savedPerson.name, savedPerson.id)// Debug: success
+
+    // Respond with 201 Created and the saved object
+    response.status(201).json(savedPerson)
+
+  } catch (error) {                                                  // Unexpected error during save
+    console.log('Error saving to database:', error.message)          // Debug: log full error
+    response.status(500).json({ error: 'internal server error' })   // 500 Internal Server Error
+  }
 })
 
-
-const PORT = process.env.PORT || 3001 // turn on server on port 3001
+const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
+  console.log('Backend ready and connected to MongoDB!')
 })
