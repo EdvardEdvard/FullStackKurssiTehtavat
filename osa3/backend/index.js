@@ -3,8 +3,8 @@ const express = require('express')  // Import Express framework
 const app = express()               // Create Express application
 const morgan = require('morgan')    // logger something something
 
+app.use(express.static('dist'))
 app.use(express.json())             // Middleware to parse JSON bodies
-app.use(cors())
 app.use(morgan('tiny'))             // logs all requests in tiny mode
 
 
