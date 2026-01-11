@@ -1,9 +1,0 @@
-npm create vite@latest
-		project name:			A.N.Y.T.H.I.N.G, 
-		framework:			React, 
-		Variant:			JavaScript, 
-		Rolldown-vite:			NO, 
-		Install with npm and start:	NO
-cd osa1
-npm install
-npm run dev
