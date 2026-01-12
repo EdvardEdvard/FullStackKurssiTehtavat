@@ -1,3 +1,4 @@
+// Contacts component to display list of persons
 const Contacts = ({ persons, handleDeletePerson }) => (
   persons.map(details =>                                                  // Display each contact with a delete button
     <li key={details.id}>                                                 

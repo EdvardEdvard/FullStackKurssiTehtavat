@@ -1,7 +1,8 @@
+// Form component for adding or updating persons
 import SubmitField from './SubmitField.jsx'
 
-const PersonsForm = ({ newPerson, setNewName, newNumber, setNewNumber, handleAddPerson, handleChange }) => {
-  return (
+const PersonsForm = ({ newPerson, setNewName, newNumber, setNewNumber, handleAddPerson, handleChange }) => { 
+  return (                                                       
     <form onSubmit={handleAddPerson}>
       <SubmitField label="name" newValue={newPerson} handler={handleChange} setter={setNewName} />
       <br />

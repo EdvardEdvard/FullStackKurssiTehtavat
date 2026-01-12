@@ -16,9 +16,9 @@ const deleteResource = (id) => {                      // Delete a person by id f
   return request.then(response => response.data)      // Promise resolving to deleted person object
 }
 
-const update = (id, newObject) => {                    // Update a person's details on the server                   
-  const request = axios.put(`${baseUrl}/${id}`, newObject)
-  return request.then(response => response.data)
+const update = (id, newObject) => {                         // Update a person's details on the server                   
+  const request = axios.put(`${baseUrl}/${id}`, newObject)  // Return the data from the response
+  return request.then(response => response.data)            // Promise resolving to updated person object     
 }
 
 export default { getAll, create, deleteResource, update }

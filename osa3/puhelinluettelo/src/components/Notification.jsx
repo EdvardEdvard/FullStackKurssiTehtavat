@@ -3,7 +3,7 @@ const Notification = ({ message }) => {
 
   const isError = message.includes('removed') || message.toLowerCase().includes('error')  // Simple check for error messages  
 
-  return (
+  return (                                                                                // Conditional styling based on message type
     <div className={`message ${isError ? 'error' : ''}`}>
       {message}
     </div>
