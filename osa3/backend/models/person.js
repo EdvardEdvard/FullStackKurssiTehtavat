@@ -1,56 +1,52 @@
 // comments by AI
-// Import the mongoose library to manage MongoDB connection
-const mongoose = require('mongoose')
 
-// Set mongoose to use a looser query syntax (doesn't enforce all fields in the schema)
-mongoose.set('strictQuery', false)
+const mongoose = require('mongoose')      // Import the mongoose library to manage MongoDB connection
 
-// Get the MongoDB connection URL from the environment variable
-const url = process.env.MONGODB_URI
+mongoose.set('strictQuery', false)        // Disable strict query mode for flexibility in queries
 
-// Log which database we are connecting to
-console.log('connecting to', url)
+const url = process.env.MONGODB_URI       // Get the MongoDB connection URL from the environment variable
 
-// Check if the environment variable is set
-console.log('MongoDB URI is set:', !!url)
+console.log('connecting to', url)         // Log which database we are connecting to
+console.log('MongoDB URI is set:', !!url) // Check if the environment variable is set
 
-// Connect to MongoDB (force IPv4)
-mongoose.connect(url, { family: 4 })
-  // Log success message when connected
+mongoose.connect(url, { family: 4 })                           // Connect to MongoDB (force IPv4)
   .then(() => {
-    console.log('connected to MongoDB')
+    console.log('connected to MongoDB')                        // Log successful connection
   })
-  // Log error message if connection fails
   .catch(error => {
-    console.log('error connecting to MongoDB:', error.message)
+    console.log('error connecting to MongoDB:', error.message) // Log error message if connection fails
   })
 
-// Define the schema for "Person" documents
-const personSchema = new mongoose.Schema({
-  
-  name: String,
-  number: String,
-})
-
-// Log schema creation
-console.log('Person schema defined')
-
-// Customize JSON output when a document is converted
-personSchema.set('toJSON', {
-  transform: (document, returnedObject) => {
-    // Convert _id to string and rename to 'id'
-    returnedObject.id = returnedObject._id.toString()
-    // Remove the original _id
-    delete returnedObject._id
-    // Remove the Mongoose version key
-    delete returnedObject.__v
-    // Log the transformed document
-    console.log('Transforming document:', returnedObject)
+const personSchema = new mongoose.Schema({                     // Define a schema for the Person model
+  name: {
+    type: String,
+    minLength: 3,
+    required: true
+  },
+  number: {
+    type: String,
+    minLength: 8,
+    required: true,
+    validate: {
+      validator: function(v) {                            // Custom validator for phone number format
+        return /^(\d{2}|\d{3})-\d{5,}$/.test(v)           // Validate phone number format XX-XXXXXX or XXX-XXXXXX
+      },
+      message: props => `${props.value} Is not a valid phone number! It should be in the format XX-XXXXXX or XXX-XXXXXX.`
+    }
   }
 })
 
-// Export the model so it can be used elsewhere
-module.exports = mongoose.model('Person', personSchema)
+console.log('Person schema defined')                      // Log that the schema has been defined
 
-// Log that the model has been exported
-console.log('Person model exported')
+personSchema.set('toJSON', {                              // Customize JSON representation of documents
+  transform: (document, returnedObject) => {              // Transform function to modify the output
+    returnedObject.id = returnedObject._id.toString()     // Convert _id to string and assign to id
+    delete returnedObject._id                             // Remove the _id field
+    delete returnedObject.__v                             // Remove the __v field
+    console.log('Transforming document:', returnedObject) // Log the transformed document
+  }
+})
+
+module.exports = mongoose.model('Person', personSchema)   // Export the Person model based on the defined schema
+
+console.log('Person model exported')                      // Log that the model has been exported

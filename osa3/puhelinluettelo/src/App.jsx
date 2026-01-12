@@ -9,92 +9,107 @@ import Notification from './components/Notification.jsx'
 
 //handlerit
 // Add a new person or update an existing one (Kommentit ja refactorointi chatGPT:llä)
-const handleAddPerson = ({
-  event,            // form submit event
-  newPerson,        // name from input
-  newNumber,        // number from input
-  persons,          // current persons list
-  setPersons,       // state setter for persons
-  setNewName,       // clears name input
-  setNewNumber,      // clears number input
-  setConfirmMessage
-}) => {
-  
-  event.preventDefault() // stop page reload
+const handleAddPerson = async ({event, newPerson, newNumber, persons, setPersons, setNewName, setNewNumber, setConfirmMessage }) => {
+  event.preventDefault()                                               // Prevent default form submission behavior          
 
-  const existingPerson = findPersonName(persons, newPerson) // Check if the person already exists
+  const existingPerson = persons.find(p => p.name === newPerson)       // Check if person already exists by name
 
-if (existingPerson && window.confirm(`${newPerson} is already added, replace the old number?`)) {
-  updatePersonBackend(existingPerson, newNumber).then(updated => {
-      updatePersonState(persons, setPersons, updated)
-      setConfirmMessage(`Number is updated: ${newPerson}`)
-      setTimeout(() => setConfirmMessage('Awaiting actions...'), 5000)
-    })
-    .catch(error => {
-      setConfirmMessage(`Information of : ${newPerson} is already removed from server`)
-      console.log(error)
-      setTimeout(() => setConfirmMessage('Awaiting actions...'), 5000)
-    })
-}
+  // -------------------------------------------------------Creating a new person------------------------------------------------------- 
+  if (!existingPerson) {                                               // If person does not exist, create a new one 
+    try {                                                              // Attempt to create the new person on the server
+      const created = await personsService.create({                    // Create person object
+        name: newPerson,  
+        number: newNumber
+      })
 
-    if (!existingPerson) {
-      createPersonBackend({ name: newPerson, number: newNumber }).then(created => addPersonState(persons, setPersons, created));
-      setConfirmMessage(`Added: ${newPerson}`);
-      setTimeout(() => setConfirmMessage('Awaiting actions...'), 5000);
+      setPersons(persons.concat(created))                              // Update state with new person            
+      setConfirmMessage(`Added: ${newPerson}`)                         // Show confirmation message         
+      setTimeout(() => setConfirmMessage('Awaiting actions...'), 7000) // Clear message after 7 seconds
+    } catch (error) {
+      console.log("Error from server:", error.response?.data)           // Log server error for debugging
+
+      const errorMessage = error.response?.data?.error || "Unknown error occurred"   // Extract error message from server response
+      setConfirmMessage(`Error: ${errorMessage}`)                                    // Show error message to user       
+      setTimeout(() => setConfirmMessage('Awaiting actions...'), 7000)               // Clear message after 7 seconds
     }
 
-    //clear fields
-    setNewName('');
-    setNewNumber('');
-};
+    // Always clear the input fields
+    setNewName('')  
+    setNewNumber('')
+    return 
+  }
 
-const handleDeletePerson = (id, persons, setPersons) => {
-  const person = findPersonId(persons, id); // find the person
+  // ----------------------------------------------- Updating existing person's number -----------------------------------------------
+  if (window.confirm(`${newPerson} is already added, replace the old number?`)) {  // Confirm update with user  
+    try {                                                                          // Attempt to update the person's number on the server               
+      const updated = await personsService.update(existingPerson.id, {             // Update person object        
+        ...existingPerson,                                                         // Keep existing details
+        number: newNumber                                                          // Update number                 
+      })
+
+      setPersons(persons.map(p => p.id !== updated.id ? p : updated))              // Update state with updated person     
+      setConfirmMessage(`Number updated for ${newPerson}`)                         // Show confirmation message     
+      setTimeout(() => setConfirmMessage('Awaiting actions...'), 7000)             // Clear message after 7 seconds
+    } catch (error) {                                                              // Handle errors during update          
+      const msg = error.response?.data?.error || "Could not update person"         // Extract error message from server response    
+
+      if (error.response?.status === 404) {                                        // If person not found on server       
+        setConfirmMessage(`Error: ${newPerson} was already removed from server`)   // Show specific error message
+      } else {                                                                     // Other errors             
+        setConfirmMessage(`Error: ${msg}`)                                         // Show general error message      
+      }
+
+      setTimeout(() => setConfirmMessage('Awaiting actions...'), 7000)             // Clear message after 7 seconds
+    }
+  }
+
+  // Always clear the input fields
+  setNewName('')
+  setNewNumber('')
+}
+
+// Delete a person by id with confirmation
+const handleDeletePerson = (id, persons, setPersons) => {         
+  const person = findPersonId(persons, id);                                     // find person by id                    
 
   if (!person || !window.confirm(`Delete this person? ${person.name}`)) return; // confirm deletion
 
-  deletePerson(id, persons, setPersons); // delete person
+  deletePerson(id, persons, setPersons);                                        // proceed with deletion               
 };
 
-const handleChange = (event, setter) => setter(event.target.value);
+const handleChange = (event, setter) => setter(event.target.value);             // Generic input change handler          
 
-//funktiot (ei paras tapa tehdä asioita tuotannossa?)
-const updatePersonBackend = (person, number) => personsService.update(person.id, { ...person, number });
-const updatePersonState = (persons, setPersons, updatedPerson) => setPersons(persons.map(p => p.id !== updatedPerson.id ? p : updatedPerson));
-const createPersonBackend = person => personsService.create(person);
-const addPersonState = (persons, setPersons, newPerson) => setPersons(persons.concat(newPerson));
-const deletePerson = (id, persons, setPersons) => personsService.deleteResource(id).then(() => updateFormState(persons, id, setPersons))
-const findPersonId = (persons, id) => persons.find(p => p.id === id)
-const findPersonName = (persons, newName) => persons.find(p => p.name === newName)
-const updateFormState = (persons, id, setPersons) => setPersons(persons.filter(p => p.id !== id))
-const getFilteredPersons = (persons, value) => persons.filter(p => p.name.toLowerCase().includes(value.toLowerCase()))
-const fetchPersonsData = (setPersons) => personsService.getAll().then(fetchedPersons => setPersons(fetchedPersons))
+//helper functions
+const deletePerson = (id, persons, setPersons) => personsService.deleteResource(id).then(() => updateFormState(persons, id, setPersons)) // Delete person and update state
+const findPersonId = (persons, id) => persons.find(p => p.id === id) // Find person by id
+const updateFormState = (persons, id, setPersons) => setPersons(persons.filter(p => p.id !== id)) // Update state after deletion
+const getFilteredPersons = (persons, value) => persons.filter(p => p.name.toLowerCase().includes(value.toLowerCase())) // Get persons matching filter
+const fetchPersonsData = (setPersons) => personsService.getAll().then(fetchedPersons => setPersons(fetchedPersons)) // Fetch all persons from server
 
+// Main App component
 const App = () => {
 
-  //tilat
-  const [persons, setPersons] = useState([])
-  const [newPerson, setNewName] = useState('') 
-  const [newNumber, setNewNumber] = useState('')
-  const [filter, setFilter] = useState('') 
-  const [confirmMessage, setConfirmMessage] = useState('Awaiting actions...')
-  
-  
-  // Derivoitu tila - suodatettu henkilölista
-  const filteredPersons = getFilteredPersons(persons, filter)
+  // State variables
+  const [persons, setPersons] = useState([])                                    // List of persons
+  const [newPerson, setNewName] = useState('')                                  // New person's name
+  const [newNumber, setNewNumber] = useState('')                                // New person's number
+  const [filter, setFilter] = useState('')                                      // Filter value
+  const [confirmMessage, setConfirmMessage] = useState('Awaiting actions...')   // Confirmation or error message
 
-  useEffect(() => {   // Fetch notes once on mount
-    fetchPersonsData(setPersons)
-    }, []) 
+  const filteredPersons = getFilteredPersons(persons, filter)                    // Persons matching filter - derived state
 
-  return (
+  useEffect(() => {                         // Initial data fetch on component mount
+    fetchPersonsData(setPersons)            // Fetch persons from server and set state
+    }, [])                                  // Empty dependency array ensures this runs only once
+
+  return (                                  // Render the main application UI
     <div>
       <h1>Phonebook</h1>
         <Notification message={confirmMessage} />
         <Filter filter={filter} handleFilterChange={(event) => handleChange(event, setFilter)} />  
       <h2>add a new</h2> 
         <PersonsForm newPerson={newPerson} setNewName={setNewName} newNumber={newNumber} setNewNumber={setNewNumber} 
-            handleAddPerson={event => handleAddPerson({ event, newPerson, newNumber, persons, setPersons, setNewName, setNewNumber, setConfirmMessage })} handleChange={handleChange} 
+            handleAddPerson={event => handleAddPerson({ event, newPerson, newNumber, persons, setPersons, setNewName, setNewNumber, setConfirmMessage })} handleChange={handleChange}
         />
       <h3>Numbers</h3>  
         <section>
@@ -106,84 +121,9 @@ const App = () => {
 
 export default App
 
-/*
-import { useState } from 'react'
-
-//Data
-const defaultList = [
-    { id: 1, name: 'Arto Hellas', number: '040-123456' },
-    { id: 2, name: 'Ada Lovelace', number: '39-44-5323523' },
-    { id: 3, name: 'Dan Abramov', number: '12-43-234345' },
-    { id: 4,  name: 'Mary Poppendieck', number: '39-23-6423122' }
-  ]
-
-//komponentit
-const MappedContacts = ({ persons }) => (
-  persons.map(details => <li key={details.id}>{details.name} {details.number}</li>)
-)
-
-//handlerit
-const handleAddPerson = ({ event, newPerson, persons, setPersons, setNewName, setNewNumber, newNumber }) => {
-  event.preventDefault()
-  if (isPersonInList(persons, newPerson)) (
-    alert(`${newPerson} is already added to phonebook`)
-  )
-  const newId = String(persons.length + 1)
-  const personObject = { id: newId, name: newPerson, number: newNumber }
-  setPersons(persons.concat(personObject))
-  setNewName('')
-  setNewNumber('')
-}
-
-//handelrit
-const handleChange = (event, setter) => setter(event.target.value);
-
-//Apufunktiot
-const isPersonInList = (persons, newPerson) => persons.some(p => p.name === newPerson) ? true : false;
-
-const getFilteredPersons = (persons, value) => {
-  const filterValue = value.toLowerCase();
-  return persons.filter(p => p.name.toLowerCase().includes(filterValue));
-}
-
-const App = () => {
-
-  //tilat
-  const [persons, setPersons] = useState(defaultList)
-  const [newPerson, setNewName] = useState('') 
-  const [newNumber, setNewNumber] = useState('')
-  const [filter, setFilter] = useState('') 
-  
-  // Derivoitu tila - suodatettu henkilölista
-  const filteredPersons = getFilteredPersons(persons, filter)
-
-  return (
-    <div>
-      <h1>Phonebook</h1>
-        <label>
-          filter shown with:{' '}
-          <input value={filter} onChange={(event) => handleChange(event, setFilter)}/>
-        </label>
-      <h1>add a new</h1>
-        <form onSubmit={(event) => handleAddPerson({ event, newPerson, newNumber, persons, setPersons, setNewName, setNewNumber })}>
-          <label>
-            name: <input value={newPerson} onChange={(event) => handleChange( event, setNewName )} />
-          </label>
-          <br />
-          <label>
-            number: <input value={newNumber} onChange={(event) => handleChange(event, setNewNumber )} />
-          </label>
-          <br />
-          <button type="submit">add</button>
-          <h1>Numbers</h1>
-        </form>   
-        <div>
-        </div>  
-      <section>
-        <MappedContacts persons={filteredPersons} />
-      </section>
-    </div>
-  )
-}
-
-export default App */
+// Quick reference of component responsibilities:
+// ─────────────────────────────────────────────
+// 108   → Notification     : success/error/info messages
+// 109   → Filter           : live name filtering
+// 111   → PersonsForm      : add new person OR update existing (name + number)
+// 116   → Contacts         : display list of filtered persons + delete functionality

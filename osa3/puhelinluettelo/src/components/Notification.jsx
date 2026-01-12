@@ -1,7 +1,8 @@
-const Notification = ({ message }) => {
+const Notification = ({ message }) => {   
   if (!message) return null
 
-  const isError = message.includes('removed') // only error messages
+  const isError = message.includes('removed') || message.toLowerCase().includes('error')  // Simple check for error messages  
+
   return (
     <div className={`message ${isError ? 'error' : ''}`}>
       {message}
